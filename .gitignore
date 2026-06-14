@@ -1,0 +1,14 @@
+# DEM cache (대용량 파일)
+cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEM Elevation Coverage Analyzer</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --surface: #f1f5f9;
+    --card: #ffffff;
+    --text: #0f172a;
+    --text-secondary: #64748b;
+    --border: #e2e8f0;
+    --success: #16a34a;
+    --error: #dc2626;
+    --warn: #d97706;
+    --header-h: 52px;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--surface);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header {
+    height: var(--header-h);
+    background: #1e293b;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  }
+  header h1 { font-size: 15px; font-weight: 600; letter-spacing: .3px; flex: 1; }
+  header .badge {
+    background: #334155;
+    color: #94a3b8;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 11px;
+  }
+  #btnApiKey {
+    background: #334155;
+    color: #cbd5e1;
+    border: 1px solid #475569;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  #btnApiKey:hover { background: #475569; }
+
+  /* ── Main layout ─────────────────────────────────────────── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────── */
+  #sidebar {
+    width: 310px;
+    min-width: 310px;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .section {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .step-num {
+    background: var(--primary);
+    color: #fff;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+
+  /* DEM select */
+  select, input[type="number"] {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+  }
+  select:focus, input[type="number"]:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+  }
+  .dem-meta {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .tag {
+    background: #eff6ff;
+    color: var(--primary);
+    border: 1px solid #bfdbfe;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-size: 11px;
+  }
+
+  /* bbox display */
+  #bboxInfo {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+  #bboxInfo.selected { border-color: #86efac; background: #f0fdf4; color: #166534; }
+  .btn-ghost {
+    margin-top: 6px;
+    width: 100%;
+    padding: 5px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover { background: var(--surface); }
+
+  /* Elevation */
+  .elev-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  input[type="range"] {
+    flex: 1;
+    accent-color: var(--primary);
+  }
+  input[type="number"] { width: 90px; flex-shrink: 0; }
+  .elev-unit { color: var(--text-secondary); font-size: 12px; }
+
+  /* Analyze button */
+  #btnAnalyze {
+    margin: 14px 16px;
+    width: calc(100% - 32px);
+    padding: 10px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  #btnAnalyze:hover:not(:disabled) { background: var(--primary-dark); }
+  #btnAnalyze:disabled { background: #94a3b8; cursor: not-allowed; }
+
+  /* Status */
+  #statusBar {
+    display: none;
+    margin: 0 16px 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    text-align: center;
+  }
+  #statusBar.loading { background: #eff6ff; color: var(--primary); border: 1px solid #bfdbfe; }
+  #statusBar.error   { background: #fef2f2; color: var(--error);   border: 1px solid #fecaca; }
+  #statusBar.success { background: #f0fdf4; color: var(--success); border: 1px solid #86efac; }
+
+  /* Results */
+  #results { display: none; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-card.highlight {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+  }
+  .stat-label { font-size: 10px; color: var(--text-secondary); margin-bottom: 3px; }
+  .stat-value { font-size: 18px; font-weight: 700; color: var(--text); }
+  .stat-unit  { font-size: 11px; color: var(--text-secondary); }
+
+  .stat-card.full { grid-column: 1 / -1; }
+
+  .elev-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .mini-stat {
+    text-align: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 4px;
+  }
+  .mini-stat .v { font-size: 13px; font-weight: 600; }
+  .mini-stat .l { font-size: 10px; color: var(--text-secondary); }
+
+  /* Chart */
+  #chartWrap {
+    position: relative;
+    height: 150px;
+  }
+
+  /* Threshold warning banner */
+  #thresholdWarning {
+    display: none;
+    border-radius: 7px;
+    padding: 9px 11px;
+    font-size: 11px;
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  #thresholdWarning.below { background:#fef9c3; border:1px solid #fde047; color:#854d0e; }
+  #thresholdWarning.above { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+  .warn-btns { display:flex; gap:6px; margin-top:7px; flex-wrap:wrap; }
+  .warn-btn {
+    padding: 4px 10px;
+    border-radius: 5px;
+    border: 1px solid currentColor;
+    background: transparent;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: inherit;
+  }
+  .warn-btn:hover { opacity: .75; }
+
+  /* Overlay color picker */
+  #overlayStyleSection {
+    padding: 10px 16px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .style-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  .color-presets {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .color-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1.5px var(--border);
+    cursor: pointer;
+    flex-shrink: 0;
+    display: block;
+    transition: transform 0.1s;
+  }
+  .color-dot:hover { transform: scale(1.2); }
+  .color-dot.active { box-shadow: 0 0 0 2.5px var(--primary); }
+  #customColorDot {
+    background: conic-gradient(red,yellow,lime,cyan,blue,magenta,red);
+    position: relative;
+    overflow: hidden;
+  }
+  #customColorDot input[type=color] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    padding: 0;
+    border: none;
+  }
+  .style-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .style-row label { width: 46px; color: var(--text-secondary); flex-shrink: 0; }
+  .style-row input[type=range] { flex: 1; }
+  #opacityLabel { min-width: 32px; text-align: right; color: var(--text-secondary); }
+
+  /* Export buttons */
+  .export-row {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-sm {
+    flex: 1;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .btn-sm:hover { background: var(--surface); color: var(--text); }
+
+  /* ── Map ─────────────────────────────────────────────────── */
+  #map {
+    flex: 1;
+    position: relative;
+    background: #e2e8f0;
+  }
+
+  /* ── API Key Modal ───────────────────────────────────────── */
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 9000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    width: 420px;
+    max-width: 95vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  }
+  .modal h2 { font-size: 16px; margin-bottom: 6px; }
+  .modal p  { font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5; }
+  .modal input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    outline: none;
+  }
+  .modal input:focus { border-color: var(--primary); }
+  #apiTestResult {
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    display: none;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  #apiTestResult.ok      { background:#f0fdf4; color:#15803d; border:1px solid #86efac; }
+  #apiTestResult.fail    { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+  #apiTestResult.pending { background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn-primary {
+    padding: 8px 16px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-secondary {
+    padding: 8px 16px;
+    background: #fff;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn-secondary:hover { background: var(--surface); }
+
+  /* spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    display: inline-block;
+  }
+
+  /* ── Address search ─────────────────────────────────────── */
+  .search-row {
+    display: flex;
+    gap: 6px;
+  }
+  .search-row input[type="text"] {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text);
+    background: #fff;
+    outline: none;
+    min-width: 0;
+  }
+  .search-row input[type="text"]:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+  }
+  .search-btn {
+    padding: 7px 11px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .search-btn:hover { background: var(--primary-dark); }
+  #searchResults {
+    margin-top: 6px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,.08);
+  }
+  .search-item {
+    padding: 8px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.45;
+    transition: background .1s;
+  }
+  .search-item:last-child { border-bottom: none; }
+  .search-item:hover { background: #eff6ff; }
+  .search-item-name   { font-weight: 600; color: var(--text); }
+  .search-item-detail { color: var(--text-secondary); font-size: 11px; margin-top: 1px; }
+  .search-empty {
+    padding: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+
+  /* Leaflet overrides */
+  .leaflet-draw-toolbar a { font-size: 14px !important; }
+  .leaflet-control-zoom { margin-top: 10px !important; }
+</style>
+</head>
+
+<body>
+<!-- ═══ Header ════════════════════════════════════════════════ -->
+<header>
+  <h1>DEM Elevation Coverage Analyzer</h1>
+  <span class="badge">고도 이하 면적 분석</span>
+  <button id="btnApiKey" onclick="openModal()">🔑 API Key</button>
+</header>
+
+<!-- ═══ Main ══════════════════════════════════════════════════ -->
+<div id="main">
+
+  <!-- ── Sidebar ────────────────────────────────────────────── -->
+  <div id="sidebar">
+
+    <!-- 주소 검색 -->
+    <div class="section">
+      <div class="section-title">🔍 주소 검색</div>
+      <div class="search-row">
+        <input type="text" id="addrInput"
+               placeholder="주소 또는 장소명 입력 (한글 가능)"
+               onkeydown="if(event.key==='Enter') searchAddress()">
+        <button class="search-btn" onclick="searchAddress()">검색</button>
+      </div>
+      <div id="searchResults" style="display:none"></div>
+    </div>
+
+    <!-- Step 1 : DEM -->
+    <div class="section">
+      <div class="section-title">
+        <span class="step-num">1</span> DEM 데이터 선택
+      </div>
+      <select id="demType" onchange="onDemChange()">
+        <optgroup label="🆓 API 키 불필요 (AWS S3 COG)">
+          <option value="COP30" selected>Copernicus GLO-30 (30m) – ESA/AWS</option>
+          <option value="COP90">Copernicus GLO-90 (90m) – ESA/AWS</option>
+        </optgroup>
+        <optgroup label="🔑 OpenTopography API 키 필요">
+          <option value="SRTMGL1">SRTM GL1 (30m) – NASA/USGS</option>
+          <option value="NASADEM">NASADEM (30m) – NASA</option>
+          <option value="AW3D30">AW3D30 v3.2 (30m) – JAXA</option>
+          <option value="SRTMGL3">SRTM GL3 (90m) – NASA/USGS</option>
+        </optgroup>
+      </select>
+      <div class="dem-meta" id="demMeta">
+        <span class="tag" id="demRes">30m</span>
+        <span class="tag" id="demCov">전 지구</span>
+        <span class="tag" id="demProv">ESA/AWS</span>
+      </div>
+      <div id="demFreeNote" style="font-size:11px;margin-top:6px;color:#16a34a;font-weight:600;">
+        🆓 API 키 없이 AWS S3에서 직접 다운로드
+      </div>
+    </div>
+
+    <!-- Step 2 : Region -->
+    <div class="section">
+      <div class="section-title">
+        <span class="step-num">2</span> 분석 영역 선택
+      </div>
+      <p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">
+        지도에서 □ 사각형 또는 다각형 도구로 영역을 그리세요.
+      </p>
+      <div id="bboxInfo">영역을 선택하지 않았습니다.</div>
+      <button class="btn-ghost" onclick="clearDrawing()">✕ 영역 초기화</button>
+    </div>
+
+    <!-- Step 3 : Elevation -->
+    <div class="section">
+      <div class="section-title">
+        <span class="step-num">3</span> 기준 고도
+      </div>
+      <div class="elev-row">
+        <input type="range" id="elevSlider" min="-500" max="8849" value="100" step="1"
+               oninput="syncElev('slider')">
+        <input type="number" id="elevInput" value="100" min="-500" max="8849" step="1"
+               oninput="syncElev('input')">
+        <span class="elev-unit">m</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:5px;">
+        기준 고도 <strong id="elevLabel">100 m</strong> 이하 영역의 면적을 계산합니다.
+      </div>
+    </div>
+
+    <!-- Analyze -->
+    <button id="btnAnalyze" onclick="runAnalysis()">
+      분석 실행 ▶
+    </button>
+
+    <!-- Status -->
+    <div id="statusBar"></div>
+
+    <!-- Results -->
+    <div id="results">
+      <div class="section">
+        <div class="section-title">📊 분석 결과</div>
+
+        <div class="stat-grid">
+          <div class="stat-card highlight">
+            <div class="stat-label">기준 고도 이하 면적</div>
+            <div><span class="stat-value" id="rBelow">–</span><span class="stat-unit"> km²</span></div>
+          </div>
+          <div class="stat-card highlight">
+            <div class="stat-label">이하 비율</div>
+            <div><span class="stat-value" id="rRatio">–</span><span class="stat-unit"> %</span></div>
+          </div>
+          <div class="stat-card full">
+            <div class="stat-label">선택 영역 총 면적</div>
+            <div><span class="stat-value" id="rTotal">–</span><span class="stat-unit"> km²</span></div>
+          </div>
+        </div>
+
+        <div class="elev-stats">
+          <div class="mini-stat">
+            <div class="v" id="rMin">–</div>
+            <div class="l">최소 (m)</div>
+          </div>
+          <div class="mini-stat">
+            <div class="v" id="rMax">–</div>
+            <div class="l">최대 (m)</div>
+          </div>
+          <div class="mini-stat">
+            <div class="v" id="rMean">–</div>
+            <div class="l">평균 (m)</div>
+          </div>
+          <div class="mini-stat">
+            <div class="v" id="rStd">–</div>
+            <div class="l">표준편차</div>
+          </div>
+        </div>
+
+        <div id="thresholdWarning"></div>
+
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;">
+          고도 분포 히스토그램 (파란색: 기준 고도 이하 · 빨간 점선: 기준 고도)
+        </div>
+        <div id="chartWrap">
+          <canvas id="histChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 오버레이 색상 설정 -->
+      <div id="overlayStyleSection" style="display:none">
+        <div class="style-section-title">🎨 오버레이 색상 설정</div>
+        <div class="color-presets">
+          <div class="color-dot active" data-color="#1e64dc" style="background:#1e64dc" title="파란색 (기본)" onclick="onColorDotClick(this)"></div>
+          <div class="color-dot" data-color="#dc2020" style="background:#dc2020" title="빨간색" onclick="onColorDotClick(this)"></div>
+          <div class="color-dot" data-color="#16a34a" style="background:#16a34a" title="초록색" onclick="onColorDotClick(this)"></div>
+          <div class="color-dot" data-color="#f97316" style="background:#f97316" title="주황색" onclick="onColorDotClick(this)"></div>
+          <div class="color-dot" data-color="#9333ea" style="background:#9333ea" title="보라색" onclick="onColorDotClick(this)"></div>
+          <div class="color-dot" data-color="#eab308" style="background:#eab308" title="노란색" onclick="onColorDotClick(this)"></div>
+          <label class="color-dot" id="customColorDot" title="직접 색상 선택 (클릭)">
+            <input type="color" id="overlayColor" value="#1e64dc" oninput="onCustomColorChange(this.value)">
+          </label>
+        </div>
+        <div class="style-row">
+          <label>투명도</label>
+          <input type="range" id="overlayOpacity" min="10" max="95" value="63" oninput="onOpacityChange(this.value)">
+          <span id="opacityLabel">63%</span>
+        </div>
+      </div>
+
+      <div class="export-row">
+        <button class="btn-sm" onclick="exportMap()">🖼 지도 저장</button>
+        <button class="btn-sm" onclick="exportJSON()">📄 JSON 저장</button>
+      </div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- ── Map ───────────────────────────────────────────────── -->
+  <div id="map"></div>
+
+</div><!-- /main -->
+
+<!-- ═══ API Key Modal ═════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modalBd">
+  <div class="modal">
+    <h2>🔑 OpenTopography API Key</h2>
+    <p>
+      무료 API 키 발급: <strong>portal.opentopography.org/requestApiKey</strong><br>
+      키는 이 브라우저에만 저장되며 외부로 전송되지 않습니다.
+    </p>
+    <input type="text" id="apiKeyInput" placeholder="API Key를 붙여넣으세요..." autocomplete="off"
+           oninput="document.getElementById('apiTestResult').style.display='none'">
+    <div id="apiTestResult"></div>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="closeModal()">취소</button>
+      <button id="btnTestKey" class="btn-secondary" onclick="testApiKey()">키 확인</button>
+      <button class="btn-primary" onclick="saveApiKey()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts ══════════════════════════════════════════════════ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════
+// 로컬: Flask 직접 실행 포트, 배포: 동일 origin (Render 등)
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? `${window.location.protocol}//${window.location.hostname}:5000`
+  : '';
+const DEM_INFO = {
+  COP30:   { res:'30m', cov:'전 지구',   prov:'ESA/AWS',     free:true  },
+  COP90:   { res:'90m', cov:'전 지구',   prov:'ESA/AWS',     free:true  },
+  NASADEM: { res:'30m', cov:'위도 ±60°', prov:'NASA',        free:false },
+  SRTMGL1: { res:'30m', cov:'위도 ±60°', prov:'NASA/USGS',   free:false },
+  AW3D30:  { res:'30m', cov:'전 지구',   prov:'JAXA',        free:false },
+  SRTMGL3: { res:'90m', cov:'위도 ±60°', prov:'NASA/USGS',   free:false },
+};
+
+let currentBounds  = null;   // Leaflet LatLngBounds
+let overlayLayer   = null;   // Leaflet ImageOverlay
+let lastResult     = null;   // last analysis JSON
+let histChart      = null;   // Chart.js instance
+let searchMarker   = null;   // address search pin
+let geocodeResults = [];     // last Nominatim results
+let elevGrid          = null;   // { rows, cols, data } — 분석 후 고도 격자
+let elevGridBbox      = null;   // { south, north, west, east }
+let originalOverlayPng = null;  // 서버 원본 마스크 PNG (재채색용)
+
+// ═══════════════════════════════════════════════════════════
+//  Address geocoding (Nominatim / OSM — 무료, API 키 불필요)
+// ═══════════════════════════════════════════════════════════
+async function searchAddress() {
+  const query = document.getElementById('addrInput').value.trim();
+  const box   = document.getElementById('searchResults');
+  if (!query) return;
+
+  box.style.display = 'block';
+  box.innerHTML = '<div class="search-empty">검색 중…</div>';
+
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search'
+      + `?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
+    const resp = await fetch(url, { headers: { 'Accept-Language': 'ko' } });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const results = await resp.json();
+    geocodeResults = results;
+
+    if (results.length === 0) {
+      box.innerHTML = '<div class="search-empty">검색 결과가 없습니다.</div>';
+      return;
+    }
+
+    if (results.length === 1) {
+      box.style.display = 'none';
+      flyToGeocodeResult(0);
+      return;
+    }
+
+    box.innerHTML = results.map((r, i) => {
+      const parts  = r.display_name.split(',');
+      const name   = parts[0].trim();
+      const detail = parts.slice(1, 3).join(', ').trim();
+      return `<div class="search-item" onclick="flyToGeocodeResult(${i})">
+        <div class="search-item-name">${name}</div>
+        <div class="search-item-detail">${detail}</div>
+      </div>`;
+    }).join('');
+
+  } catch (e) {
+    box.innerHTML = `<div class="search-empty">오류: ${e.message}</div>`;
+  }
+}
+
+function flyToGeocodeResult(idx) {
+  const r   = geocodeResults[idx];
+  const lat = parseFloat(r.lat);
+  const lon = parseFloat(r.lon);
+
+  document.getElementById('searchResults').style.display = 'none';
+
+  // boundingbox가 있으면 그 범위로, 없으면 zoom 13으로 이동
+  if (r.boundingbox) {
+    const bb = r.boundingbox.map(Number); // [south, north, west, east]
+    map.flyToBounds([[bb[0], bb[2]], [bb[1], bb[3]]], { duration: 1.2, padding: [30, 30] });
+  } else {
+    map.flyTo([lat, lon], 13, { duration: 1.2 });
+  }
+
+  if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+  const parts  = r.display_name.split(',');
+  const name   = parts[0].trim();
+  const detail = parts.slice(1, 3).join(', ').trim();
+  searchMarker = L.marker([lat, lon])
+    .addTo(map)
+    .bindPopup(`<strong>${name}</strong><br><span style="font-size:11px;color:#64748b">${detail}</span>`)
+    .openPopup();
+}
+
+// 지도 클릭 시 검색 결과 드롭다운 닫기
+document.addEventListener('click', function(e) {
+  const box   = document.getElementById('searchResults');
+  const input = document.getElementById('addrInput');
+  if (!box.contains(e.target) && e.target !== input) {
+    box.style.display = 'none';
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Map setup
+// ═══════════════════════════════════════════════════════════
+const map = L.map('map', { zoomControl: true }).setView([37.5, 127.0], 8);
+
+const osmLayer = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { attribution: '© OpenStreetMap contributors', maxZoom: 19 }
+);
+const satLayer = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { attribution: 'Esri World Imagery', maxZoom: 19 }
+);
+osmLayer.addTo(map);
+
+L.control.layers(
+  { '지도 (OSM)': osmLayer, '위성': satLayer },
+  {},
+  { position: 'topright', collapsed: false }
+).addTo(map);
+
+L.control.scale({ imperial: false }).addTo(map);
+
+// ── Draw control ────────────────────────────────────────────
+const drawnItems = new L.FeatureGroup().addTo(map);
+
+const drawControl = new L.Control.Draw({
+  position: 'topleft',
+  edit: { featureGroup: drawnItems, remove: true },
+  draw: {
+    rectangle: { shapeOptions: { color: '#2563eb', weight: 2 } },
+    polygon:   { shapeOptions: { color: '#2563eb', weight: 2 } },
+    circle: false, marker: false, circlemarker: false, polyline: false
+  }
+});
+map.addControl(drawControl);
+
+map.on('draw:created', function(e) {
+  drawnItems.clearLayers();
+  if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
+  drawnItems.addLayer(e.layer);
+  currentBounds = e.layer.getBounds();
+  updateBboxDisplay();
+});
+map.on('draw:deleted', function() {
+  currentBounds = null;
+  updateBboxDisplay();
+});
+
+// ── Coordinate + elevation display ─────────────────────────
+const coordBox = L.control({ position: 'bottomleft' });
+coordBox.onAdd = function() {
+  const d = L.DomUtil.create('div');
+  d.style.cssText = [
+    'background:rgba(255,255,255,.92)',
+    'padding:4px 10px',
+    'font-size:11px',
+    'border-radius:5px',
+    'font-family:monospace',
+    'box-shadow:0 1px 4px rgba(0,0,0,.18)',
+    'min-width:220px',
+    'text-align:center',
+    'line-height:1.5',
+  ].join(';');
+  d.id = 'coordDisplay';
+  return d;
+};
+coordBox.addTo(map);
+
+map.on('mousemove', function(e) {
+  const lat = e.latlng.lat;
+  const lon = e.latlng.lng;
+  const coordStr = `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+  const elev = getElevationAt(lat, lon);
+  const el = document.getElementById('coordDisplay');
+  if (elev !== null) {
+    const color = elev <= 0 ? '#0284c7' : elev <= 100 ? '#16a34a' : elev <= 500 ? '#d97706' : '#dc2626';
+    el.innerHTML =
+      `${coordStr}<br>` +
+      `<span style="color:${color};font-weight:700;font-size:12px;">▲ ${elev} m</span>` +
+      `<span style="color:#94a3b8;font-size:10px;"> (${elevGridBbox ? document.getElementById('demType').value : ''})</span>`;
+  } else {
+    el.innerHTML = coordStr + (elevGrid ? '<br><span style="color:#cbd5e1;font-size:10px;">분석 영역 밖</span>' : '');
+  }
+});
+
+// ── 격자 이중선형 보간으로 고도 조회 ───────────────────────
+function getElevationAt(lat, lon) {
+  if (!elevGrid || !elevGridBbox) return null;
+  const b = elevGridBbox;
+  if (lat < b.south || lat > b.north || lon < b.west || lon > b.east) return null;
+
+  const { rows, cols, data } = elevGrid;
+  const rowF = (b.north - lat) / (b.north - b.south) * (rows - 1);
+  const colF = (lon - b.west)  / (b.east  - b.west)  * (cols - 1);
+
+  const r0 = Math.floor(rowF), r1 = Math.min(r0 + 1, rows - 1);
+  const c0 = Math.floor(colF), c1 = Math.min(c0 + 1, cols - 1);
+  const v00 = data[r0 * cols + c0];
+  const v01 = data[r0 * cols + c1];
+  const v10 = data[r1 * cols + c0];
+  const v11 = data[r1 * cols + c1];
+
+  // null(노데이터)이 하나라도 있으면 nearest neighbor로 폴백
+  if (v00 === null || v01 === null || v10 === null || v11 === null) {
+    const val = data[Math.round(rowF) * cols + Math.round(colF)];
+    return val !== null ? Math.round(val) : null;
+  }
+
+  const dr = rowF - r0, dc = colF - c0;
+  const interp = v00*(1-dr)*(1-dc) + v01*(1-dr)*dc + v10*dr*(1-dc) + v11*dr*dc;
+  return Math.round(interp);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UI helpers
+// ═══════════════════════════════════════════════════════════
+function updateBboxDisplay() {
+  const el = document.getElementById('bboxInfo');
+  if (!currentBounds) {
+    el.className = '';
+    el.innerHTML = '영역을 선택하지 않았습니다.';
+    return;
+  }
+  const s = currentBounds.getSouth().toFixed(4);
+  const n = currentBounds.getNorth().toFixed(4);
+  const w = currentBounds.getWest().toFixed(4);
+  const e = currentBounds.getEast().toFixed(4);
+  const latSpan = (currentBounds.getNorth() - currentBounds.getSouth()).toFixed(3);
+  const lonSpan = (currentBounds.getEast()  - currentBounds.getWest() ).toFixed(3);
+  el.className = 'selected';
+  el.innerHTML =
+    `N: ${n}° / S: ${s}°<br>E: ${e}° / W: ${w}°<br>` +
+    `<span style="font-weight:600">△위도 ${latSpan}° × △경도 ${lonSpan}°</span>`;
+}
+
+function clearDrawing() {
+  drawnItems.clearLayers();
+  currentBounds = null;
+  if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
+  updateBboxDisplay();
+  hideResults();
+}
+
+function syncElev(source) {
+  const slider = document.getElementById('elevSlider');
+  const input  = document.getElementById('elevInput');
+  const label  = document.getElementById('elevLabel');
+  if (source === 'slider') input.value = slider.value;
+  else slider.value = input.value;
+  label.textContent = `${slider.value} m`;
+}
+
+function onDemChange() {
+  const key  = document.getElementById('demType').value;
+  const info = DEM_INFO[key] || {};
+  document.getElementById('demRes').textContent  = info.res  || '';
+  document.getElementById('demCov').textContent  = info.cov  || '';
+  document.getElementById('demProv').textContent = info.prov || '';
+
+  // API 키 불필요 DEM 선택 시 안내 메시지
+  const freeNote = document.getElementById('demFreeNote');
+  if (info.free) {
+    freeNote.style.display = 'block';
+    freeNote.textContent   = '🆓 API 키 없이 AWS S3에서 직접 다운로드';
+  } else {
+    freeNote.style.display = 'block';
+    freeNote.textContent   = '🔑 OpenTopography API 키 필요';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  API Key modal
+// ═══════════════════════════════════════════════════════════
+function openModal() {
+  const key = localStorage.getItem('otApiKey') || '';
+  document.getElementById('apiKeyInput').value = key;
+  document.getElementById('apiTestResult').style.display = 'none';
+  document.getElementById('modalBd').classList.add('open');
+}
+
+async function testApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  const resultEl = document.getElementById('apiTestResult');
+  const btn = document.getElementById('btnTestKey');
+
+  if (!key) {
+    resultEl.className = 'fail';
+    resultEl.style.display = 'block';
+    resultEl.textContent = '⚠ API 키를 먼저 입력해주세요.';
+    return;
+  }
+
+  resultEl.className = 'pending';
+  resultEl.style.display = 'block';
+  resultEl.textContent = '⏳ 키 유효성 확인 중… (10~30초 소요될 수 있습니다)';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/test_key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      resultEl.className = 'ok';
+      resultEl.textContent = '✓ API 키가 유효합니다. [저장] 버튼을 눌러 적용하세요.';
+    } else {
+      resultEl.className = 'fail';
+      resultEl.textContent = `✗ ${data.error}`;
+    }
+  } catch (e) {
+    resultEl.className = 'fail';
+    resultEl.textContent = `✗ 서버 연결 실패 (Flask 서버가 실행 중인지 확인): ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+function closeModal() {
+  document.getElementById('modalBd').classList.remove('open');
+}
+function saveApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (key) localStorage.setItem('otApiKey', key);
+  else localStorage.removeItem('otApiKey');
+  closeModal();
+  setStatus('success', key ? 'API 키가 저장되었습니다.' : 'API 키가 삭제되었습니다.');
+}
+document.getElementById('modalBd').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Status bar
+// ═══════════════════════════════════════════════════════════
+function setStatus(type, msg) {
+  const el = document.getElementById('statusBar');
+  el.className = type;
+  el.style.display = 'block';
+  el.innerHTML = msg;
+  if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+function clearStatus() {
+  document.getElementById('statusBar').style.display = 'none';
+}
+function hideResults() {
+  document.getElementById('results').style.display = 'none';
+  clearStatus();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Main analysis
+// ═══════════════════════════════════════════════════════════
+async function runAnalysis() {
+  if (!currentBounds) {
+    setStatus('error', '⚠ 먼저 지도에서 분석 영역을 선택해주세요.');
+    return;
+  }
+
+  const apiKey = (localStorage.getItem('otApiKey') || '').trim();
+  if (!apiKey) {
+    setStatus('error', '⚠ OpenTopography API 키를 입력해주세요. 우측 상단 [🔑 API Key] 클릭.');
+    return;
+  }
+
+  const btn = document.getElementById('btnAnalyze');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 분석 중...';
+  setStatus('loading', '⏳ DEM 다운로드 중… (수십 초 소요될 수 있습니다)');
+
+  const bbox = {
+    south: currentBounds.getSouth(),
+    north: currentBounds.getNorth(),
+    west:  currentBounds.getWest(),
+    east:  currentBounds.getEast(),
+  };
+  const elevation = parseFloat(document.getElementById('elevInput').value);
+  const demType   = document.getElementById('demType').value;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bbox, elevation, dem_type: demType, api_key: apiKey }),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+
+    showResults(data);
+    showOverlay(data);
+    setStatus('success', `✓ 분석 완료 — ${data.dem_name} 기준 고도 ${elevation} m 이하`);
+    lastResult = data;
+  } catch (err) {
+    setStatus('error', `⚠ 오류: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '분석 실행 ▶';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Show results panel
+// ═══════════════════════════════════════════════════════════
+function showResults(d) {
+  document.getElementById('results').style.display = 'block';
+
+  elevGrid     = d.elev_grid || null;
+  elevGridBbox = d.bbox      || null;
+
+  document.getElementById('rBelow').textContent = d.below_area_km2.toLocaleString();
+  document.getElementById('rRatio').textContent = d.below_ratio_pct.toFixed(1);
+  document.getElementById('rTotal').textContent = d.total_area_km2.toLocaleString();
+
+  const s = d.stats;
+  document.getElementById('rMin').textContent  = s.min_elev.toFixed(0);
+  document.getElementById('rMax').textContent  = s.max_elev.toFixed(0);
+  document.getElementById('rMean').textContent = s.mean_elev.toFixed(0);
+  document.getElementById('rStd').textContent  = s.std_elev.toFixed(0);
+
+  showThresholdWarning(d.elevation_threshold, s);
+  drawHistogram(d.histogram, d.elevation_threshold);
+}
+
+function showThresholdWarning(threshold, stats) {
+  const el  = document.getElementById('thresholdWarning');
+  const min = Math.round(stats.min_elev);
+  const max = Math.round(stats.max_elev);
+  const avg = Math.round(stats.mean_elev);
+
+  if (threshold < min) {
+    el.className = 'below';
+    el.style.display = 'block';
+    el.innerHTML =
+      `⚠ <strong>기준 고도 ${threshold} m</strong>가 선택 영역의 최저 고도` +
+      ` (<strong>${min} m</strong>)보다 낮습니다.<br>` +
+      `이 영역에는 ${threshold} m 이하 지점이 없으므로 이하 면적 = 0 km²가 정확한 결과입니다.<br>` +
+      `<span style="opacity:.8">기준 고도를 ${min} m 이상으로 높여보세요:</span>` +
+      `<div class="warn-btns">` +
+      `<button class="warn-btn" onclick="applyElevation(${min})">최소 ${min} m</button>` +
+      `<button class="warn-btn" onclick="applyElevation(${avg})">평균 ${avg} m</button>` +
+      `<button class="warn-btn" onclick="applyElevation(${max})">최대 ${max} m</button>` +
+      `</div>`;
+  } else if (threshold > max) {
+    el.className = 'above';
+    el.style.display = 'block';
+    el.innerHTML =
+      `ℹ <strong>기준 고도 ${threshold} m</strong>가 최고 고도 (<strong>${max} m</strong>)보다 높습니다.` +
+      ` 선택 영역 전체가 기준 고도 이하에 포함됩니다.`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function applyElevation(value) {
+  document.getElementById('elevInput').value  = value;
+  document.getElementById('elevSlider').value = value;
+  document.getElementById('elevLabel').textContent = `${value} m`;
+  // 즉시 재분석
+  runAnalysis();
+}
+
+// ── Chart.js histogram ──────────────────────────────────────
+function drawHistogram(hist, threshold) {
+  const bins   = hist.bins;
+  const counts = hist.counts;
+  const labels = counts.map((_, i) => Math.round(bins[i]));
+  const xMin   = bins[0];
+  const xMax   = bins[bins.length - 1];
+
+  const bgColors = counts.map((_, i) => {
+    const mid = (bins[i] + bins[i + 1]) / 2;
+    return mid <= threshold
+      ? 'rgba(37, 99, 235, 0.75)'
+      : 'rgba(148, 163, 184, 0.50)';
+  });
+
+  // 기준 고도 빨간 점선 플러그인
+  const thresholdLinePlugin = {
+    id: 'thresholdLine',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea: { top, bottom, left, right } } = chart;
+      ctx.save();
+      ctx.strokeStyle = '#dc2626';
+      ctx.fillStyle   = '#dc2626';
+      ctx.font        = 'bold 9px sans-serif';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([5, 3]);
+
+      const inRange = threshold >= xMin && threshold <= xMax;
+
+      if (inRange) {
+        // 정확한 x 픽셀 위치: 선형 보간
+        const frac = (threshold - xMin) / (xMax - xMin);
+        const xPx  = left + frac * (right - left);
+        ctx.beginPath();
+        ctx.moveTo(xPx, top);
+        ctx.lineTo(xPx, bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.textAlign = 'center';
+        ctx.fillText(`▼ ${threshold}m`, xPx, top + 9);
+      } else if (threshold < xMin) {
+        // 왼쪽 밖 — 왼쪽 경계에 화살표
+        ctx.beginPath();
+        ctx.moveTo(left + 1, top);
+        ctx.lineTo(left + 1, bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.textAlign = 'left';
+        ctx.fillText(`◄ 기준 ${threshold}m`, left + 4, top + 9);
+      } else {
+        // 오른쪽 밖 — 오른쪽 경계에 화살표
+        ctx.beginPath();
+        ctx.moveTo(right - 1, top);
+        ctx.lineTo(right - 1, bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.textAlign = 'right';
+        ctx.fillText(`기준 ${threshold}m ►`, right - 4, top + 9);
+      }
+      ctx.restore();
+    }
+  };
+
+  if (histChart) histChart.destroy();
+
+  const ctx = document.getElementById('histChart').getContext('2d');
+  histChart = new Chart(ctx, {
+    type: 'bar',
+    plugins: [thresholdLinePlugin],
+    data: {
+      labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: bgColors,
+        borderWidth: 0,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 14 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => `고도 ${labels[items[0].dataIndex]}–${Math.round(bins[items[0].dataIndex + 1])} m`,
+            label: (item)  => `픽셀 수: ${item.raw.toLocaleString()}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { font: { size: 9 } },
+          grid: { color: '#f1f5f9' }
+        }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Map overlay
+// ═══════════════════════════════════════════════════════════
+function showOverlay(d) {
+  originalOverlayPng = d.overlay_png;
+  if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
+  const b = d.bbox;
+  const bounds = [[b.south, b.west], [b.north, b.east]];
+  overlayLayer = L.imageOverlay(d.overlay_png, bounds, { opacity: 0.75, zIndex: 400 });
+  overlayLayer.addTo(map);
+  map.fitBounds(bounds, { padding: [20, 20] });
+  // 색상 패널 표시 및 초기화
+  document.getElementById('overlayStyleSection').style.display = 'block';
+  document.querySelectorAll('.color-dot[data-color]').forEach(dot => dot.classList.remove('active'));
+  const defaultDot = document.querySelector('.color-dot[data-color="#1e64dc"]');
+  if (defaultDot) defaultDot.classList.add('active');
+  document.getElementById('overlayColor').value = '#1e64dc';
+  document.getElementById('overlayOpacity').value = '63';
+  document.getElementById('opacityLabel').textContent = '63%';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Overlay color (client-side canvas recoloring)
+// ═══════════════════════════════════════════════════════════
+async function recolorPng(pngDataUrl, hexColor, opacity) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width  = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const id = ctx.getImageData(0, 0, c.width, c.height);
+      const px = id.data;
+      const r = parseInt(hexColor.slice(1, 3), 16);
+      const g = parseInt(hexColor.slice(3, 5), 16);
+      const b = parseInt(hexColor.slice(5, 7), 16);
+      const a = Math.round(opacity * 255);
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i + 3] > 0) { px[i] = r; px[i+1] = g; px[i+2] = b; px[i+3] = a; }
+      }
+      ctx.putImageData(id, 0, 0);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.src = pngDataUrl;
+  });
+}
+
+async function applyOverlayStyle() {
+  if (!originalOverlayPng || !overlayLayer) return;
+  const hexColor = document.getElementById('overlayColor').value;
+  const opacity  = parseInt(document.getElementById('overlayOpacity').value) / 100;
+  const newPng   = await recolorPng(originalOverlayPng, hexColor, opacity);
+  const el = overlayLayer.getElement();
+  if (el) el.src = newPng;
+}
+
+function onColorDotClick(dotEl) {
+  document.querySelectorAll('.color-dot[data-color]').forEach(dot => dot.classList.remove('active'));
+  dotEl.classList.add('active');
+  document.getElementById('overlayColor').value = dotEl.getAttribute('data-color');
+  applyOverlayStyle();
+}
+
+function onCustomColorChange(hex) {
+  document.querySelectorAll('.color-dot[data-color]').forEach(dot => dot.classList.remove('active'));
+  applyOverlayStyle();
+}
+
+function onOpacityChange(val) {
+  document.getElementById('opacityLabel').textContent = val + '%';
+  applyOverlayStyle();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Export
+// ═══════════════════════════════════════════════════════════
+function exportMap() {
+  if (!overlayLayer) { alert('먼저 분석을 실행해주세요.'); return; }
+  const a = document.createElement('a');
+  a.href = overlayLayer.getElement()?.src || overlayLayer._url;
+  a.download = `dem_coverage_${Date.now()}.png`;
+  a.click();
+}
+
+function exportJSON() {
+  if (!lastResult) { alert('먼저 분석을 실행해주세요.'); return; }
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `dem_analysis_${Date.now()}.json`;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════
+(function init() {
+  onDemChange();
+
+  // Copernicus (AWS) 선택 시 API 키 불필요 안내
+  const hasKey = !!localStorage.getItem('otApiKey');
+  setTimeout(() => {
+    const demType = document.getElementById('demType').value;
+    const info = DEM_INFO[demType] || {};
+    if (info.free) {
+      setStatus('success', '✓ Copernicus GLO-30 선택됨 — API 키 없이 분석 가능합니다.');
+    } else if (!hasKey) {
+      setStatus('loading', '💡 선택한 DEM은 OpenTopography API 키가 필요합니다. [🔑 API Key] 버튼으로 입력하세요.');
+    }
+  }, 500);
+})();
+</script>
+</body>
+</html>
