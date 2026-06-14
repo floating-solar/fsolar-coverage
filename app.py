@@ -70,11 +70,6 @@ def analyze():
     except (TypeError, ValueError):
         return jsonify({"error": "고도 값이 유효하지 않습니다."}), 400
 
-    if not api_key:
-        return jsonify(
-            {"error": "OpenTopography API 키가 필요합니다. 우측 상단 [API Key] 버튼으로 입력하세요."}
-        ), 400
-
     if dem_type not in config.DEM_TYPES:
         return jsonify({"error": f"지원하지 않는 DEM 유형: {dem_type}"}), 400
 

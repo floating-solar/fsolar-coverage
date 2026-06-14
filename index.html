@@ -1071,8 +1071,9 @@ async function runAnalysis() {
     return;
   }
 
-  const apiKey = (localStorage.getItem('otApiKey') || '').trim();
-  if (!apiKey) {
+  const demType = document.getElementById('demType').value;
+  const apiKey  = (localStorage.getItem('otApiKey') || '').trim();
+  if (!apiKey && !(DEM_INFO[demType]?.free)) {
     setStatus('error', '⚠ OpenTopography API 키를 입력해주세요. 우측 상단 [🔑 API Key] 클릭.');
     return;
   }
@@ -1089,7 +1090,6 @@ async function runAnalysis() {
     east:  currentBounds.getEast(),
   };
   const elevation = parseFloat(document.getElementById('elevInput').value);
-  const demType   = document.getElementById('demType').value;
 
   try {
     const resp = await fetch(`${API_BASE}/api/analyze`, {
